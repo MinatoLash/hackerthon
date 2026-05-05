@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Community Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
+  <style>
+    body { 
+      margin: 0; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    #map { 
+      height: 100vh; 
+      position: relative;
+    }
+    .issue-panel {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: white;
+      padding: 20px;
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      z-index: 1000;
+      max-height: 70vh;
+      overflow-y: auto;
+    }
+    .issue-panel.active {
+      transform: translateY(0);
+    }
+    .issue-types {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+    .issue-btn {
+      padding: 15px;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      background: white;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .issue-btn:hover {
+      border-color: #007bff;
+      background: #f8f9fa;
+    }
+    .issue-btn.selected {
+      border-color: #007bff;
+      background: #007bff;
+      color: white;
+    }
+    .issue-icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    .issue-label {
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .description-input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      margin-bottom: 15px;
+      box-sizing: border-box;
+    }
+    .submit-btn, .cancel-btn {
+      padding: 15px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 5px;
+    }
+    .submit-btn {
+      background: #007bff;
+      color: white;
+      width: calc(50% - 10px);
+    }
+    .cancel-btn {
+      background: #f8f9fa;
+      color: #333;
+      width: calc(50% - 10px);
+    }
+    .location-loading {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.8);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 20px;
+      z-index: 1001;
+      display: none;
+      white-space: nowrap;
+    }
+    .locate-btn {
+      position: fixed;
+      top: 15px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 25px;
+      padding: 12px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(0,123,255,0.4);
+      white-space: nowrap;
+    }
+    .locate-btn.found {
+      background: white;
+      color: #333;
+      border: 2px solid #ccc;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      font-size: 20px;
+      top: auto;
+      bottom: 30px;
+      left: auto;
+      right: 15px;
+      transform: none;
+    }
+    @media (max-width: 768px) {
+      .issue-panel {
+        padding: 15px;
+      }
+      .issue-types {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+  </style>
+</head>
+
+<body>
+<div id="map"></div>
+
+<div class="location-loading" id="locationLoading">
+  📍 Getting your location...
+</div>
+
+<button class="locate-btn" id="locateBtn">📍 Find My Location</button>
+
+<div class="issue-panel" id="issuePanel">
+  <h3 style="margin-top: 0; margin-bottom: 15px;">Report an Issue</h3>
+  
+  <div class="issue-types">
+    <div class="issue-btn" data-type="Pothole">
+      <div class="issue-icon">🕳️</div>
+      <div class="issue-label">Pothole</div>
+    </div>
+    <div class="issue-btn" data-type="Broken Light">
+      <div class="issue-icon">💡</div>
+      <div class="issue-label">Broken Light</div>
+    </div>
+    <div class="issue-btn" data-type="Trash">
+      <div class="issue-icon">🗑️</div>
+      <div class="issue-label">Trash</div>
+    </div>
+    <div class="issue-btn" data-type="Graffiti">
+      <div class="issue-icon">🎨</div>
+      <div class="issue-label">Graffiti</div>
+    </div>
+    <div class="issue-btn" data-type="Leak">
+      <div class="issue-icon">💧</div>
+      <div class="issue-label">Water Leak</div>
+    </div>
+    <div class="issue-btn" data-type="Other">
+      <div class="issue-icon">⚠️</div>
+      <div class="issue-label">Other</div>
+    </div>
+  </div>
+  
+  <input type="text" class="description-input" id="descriptionInput" placeholder="Describe the issue...">
+  
+  <div style="text-align: center;">
+    <button class="submit-btn" id="submitBtn">Submit Report</button>
+    <button class="cancel-btn" id="cancelBtn">Cancel</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script>
+  let map = L.map('map').setView([-26.2041, 28.0473], 13);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  let reports = JSON.parse(localStorage.getItem("reports")) || [];
+  let selectedIssueType = null;
+  let pendingLocation = null;
+  let userMarker = null;
+
+  const issuePanel = document.getElementById('issuePanel');
+  const locationLoading = document.getElementById('locationLoading');
+  const descriptionInput = document.getElementById('descriptionInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const cancelBtn = document.getElementById('cancelBtn');
+  const locateBtn = document.getElementById('locateBtn');
+  const issueButtons = document.querySelectorAll('.issue-btn');
+
+  // Load existing reports on startup
+  reports.forEach(report => {
+    const marker = L.marker([report.lat, report.lng]).addTo(map);
+    marker.bindPopup(`<b>${report.type}</b><br>${report.description}`);
+  });
+
+  function showUserOnMap(lat, lng) {
+    if (userMarker) map.removeLayer(userMarker);
+    userMarker = L.circleMarker([lat, lng], {
+      color: '#fff',
+      fillColor: '#007bff',
+      fillOpacity: 1,
+      radius: 9,
+      weight: 3
+    }).addTo(map).bindPopup("📍 You are here").openPopup();
+
+    map.setView([lat, lng], 15);
+    locationLoading.style.display = 'none';
+
+    // Shrink button to icon after location is found
+    locateBtn.textContent = '📍';
+    locateBtn.classList.add('found');
+  }
+
+  function useDefaultLocation() {
+    locationLoading.style.display = 'none';
+  }
+
+  function getLocation() {
+    if (!navigator.geolocation) {
+      alert('Your browser does not support location services.');
+      return;
+    }
+
+    locationLoading.style.display = 'block';
+    locateBtn.textContent = '⏳';
+
+    navigator.geolocation.getCurrentPosition(
+      pos => showUserOnMap(pos.coords.latitude, pos.coords.longitude),
+      err => {
+        // First attempt failed — retry with high accuracy
+        navigator.geolocation.getCurrentPosition(
+          pos => showUserOnMap(pos.coords.latitude, pos.coords.longitude),
+          err2 => {
+            locationLoading.style.display = 'none';
+            locateBtn.textContent = '📍 Find My Location';
+            locateBtn.classList.remove('found');
+
+            const messages = {
+              1: 'Location permission was denied. Please tap the 🔒 icon in your browser and set Location → Allow, then try again.',
+              2: 'Location could not be determined. Make sure GPS is enabled on your device.',
+              3: 'Location request timed out. Check your GPS signal and try again.'
+            };
+            alert(messages[err2.code] || 'Location error: ' + err2.message);
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        );
+      },
+      { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+    );
+  }
+
+  // Do NOT auto-call getLocation() — wait for user tap to ensure
+  // the browser shows the permission prompt reliably on mobile.
+
+  // Re-locate button
+  locateBtn.addEventListener('click', getLocation);
+
+  // Issue type selection
+  issueButtons.forEach(btn => {
+    btn.addEventListener('click', function() {
+      issueButtons.forEach(b => b.classList.remove('selected'));
+      this.classList.add('selected');
+      selectedIssueType = this.dataset.type;
+    });
+  });
+
+  // Submit report
+  submitBtn.addEventListener('click', function() {
+    if (!selectedIssueType) {
+      alert('Please select an issue type');
+      return;
+    }
+    const description = descriptionInput.value.trim();
+    if (!description) {
+      alert('Please describe the issue');
+      return;
+    }
+    if (!pendingLocation) {
+      alert('Please tap on the map to select a location');
+      return;
+    }
+
+    const report = {
+      lat: pendingLocation.lat,
+      lng: pendingLocation.lng,
+      type: selectedIssueType,
+      description: description,
+      timestamp: new Date().toISOString()
+    };
+
+    reports.push(report);
+    localStorage.setItem("reports", JSON.stringify(reports));
+
+    const marker = L.marker([pendingLocation.lat, pendingLocation.lng]).addTo(map);
+    marker.bindPopup(`<b>${selectedIssueType}</b><br>${description}`).openPopup();
+
+    closeIssuePanel();
+  });
+
+  cancelBtn.addEventListener('click', closeIssuePanel);
+
+  function closeIssuePanel() {
+    issuePanel.classList.remove('active');
+    selectedIssueType = null;
+    pendingLocation = null;
+    descriptionInput.value = '';
+    issueButtons.forEach(b => b.classList.remove('selected'));
+  }
+
+  map.on('click', function(e) {
+    pendingLocation = { lat: e.latlng.lat, lng: e.latlng.lng };
+    issuePanel.classList.add('active');
+    setTimeout(() => descriptionInput.focus(), 300);
+  });
+
+  // Touch support for mobile
+  if ('ontouchstart' in window) {
+    map.dragging.enable();
+    map.touchZoom.enable();
+    map.doubleClickZoom.enable();
+    map.scrollWheelZoom.disable();
+  }
+</script>
+</body>
+</html>
