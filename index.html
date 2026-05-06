@@ -156,6 +156,7 @@
       z-index: 1002;
       padding: 28px 20px 20px;
       box-sizing: border-box;
+      overflow-y: auto;
     }
     .menu.open { left: 0; }
     .menu h3 { margin: 0 0 4px; font-size: 18px; color: #007bff; }
@@ -175,6 +176,43 @@
       z-index: 1001; background: transparent;
     }
     .menu-overlay.show { display: block; }
+
+    /* ── DEV SECTION ── */
+    .dev-section {
+      margin-top: 8px;
+      border: 1.5px dashed #ffb300;
+      border-radius: 10px;
+      padding: 10px 10px 6px;
+      background: #fffde7;
+    }
+    .dev-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #f57c00;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .dev-clear-btn {
+      width: 100%;
+      padding: 9px;
+      background: #fff3e0;
+      border: 1.5px solid #ffb300;
+      border-radius: 7px;
+      color: #e65100;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: 0.15s;
+    }
+    .dev-clear-btn:hover { background: #ffe0b2; border-color: #e65100; }
 
     /* ── FULL-SCREEN PHOTO VIEWER ── */
     .photo-viewer {
@@ -207,7 +245,7 @@
     }
     .photo-viewer-close:hover { background: rgba(255,255,255,0.28); }
 
-    /* popup photo styles */
+    /* popup styles */
     .popup-thumb {
       width: 100%;
       max-height: 90px;
@@ -228,11 +266,43 @@
       cursor: pointer;
       text-decoration: none;
     }
+    .popup-delete-btn {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 5px 10px;
+      background: #ff4444;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      width: 100%;
+      text-align: center;
+    }
+    .popup-delete-btn:hover { background: #cc0000; }
+
+    /* ── CONFIG WARNING BANNER ── */
+    #configWarning {
+      display: none;
+      position: fixed;
+      top: 60px; left: 50%;
+      transform: translateX(-50%);
+      background: #ff4444;
+      color: white;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      z-index: 1500;
+      max-width: 90vw;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div id="configWarning">⚠️ Firebase not configured — reports won't save. Add your config keys.</div>
 <button class="locate-btn" id="locateBtn">📍 Find My Location</button>
 <button class="menu-btn" id="menuBtn">☰</button>
 <div class="menu-overlay" id="menuOverlay"></div>
@@ -248,6 +318,14 @@
   <div class="menu-item"><span class="mi">✅</span> Mark Resolved <span style="margin-left:auto;font-size:11px;color:#aaa;">soon</span></div>
   <hr>
   <div class="coming-soon">More features coming soon...</div>
+
+  <!-- DEV CONTROLS -->
+  <hr>
+  <div class="dev-section">
+    <div class="dev-label">🛠️ Developer Controls</div>
+    <button class="dev-clear-btn" id="devClearBtn">🗑️ Clear All Reports</button>
+    <div style="font-size:10px;color:#aaa;margin-top:5px;text-align:center;">Dev only — permanently deletes all data</div>
+  </div>
 </div>
 
 <!-- Issue report panel -->
@@ -292,10 +370,12 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
 import {
-  getFirestore, collection, addDoc, onSnapshot
+  getFirestore, collection, addDoc, deleteDoc, doc, onSnapshot, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-// 🔥 Firebase config
+// ─────────────────────────────────────────────
+// 🔥 Firebase config 
+// ─────────────────────────────────────────────
   const firebaseConfig = {
     apiKey: "AIzaSyBT8j239aELPwxD0iQcQj6fdnhQVHNuMLU",
     authDomain: "community-map-125ba.firebaseapp.com",
@@ -303,26 +383,68 @@ import {
     appId: "1:1016337399487:web:77ba8a7b8c89fd850fd00a"
   };
 
+// Show warning if Firebase is not configured
+const isConfigured = firebaseConfig.apiKey && firebaseConfig.projectId;
+if (!isConfigured) {
+  document.getElementById("configWarning").style.display = "block";
+}
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const reportsRef = collection(db, "reports");
 
+// ─────────────────────────────────────────────
+// 🪪 SESSION ID — used to identify report owner
+// Each browser session gets a unique ID stored
+// in sessionStorage so the owner can delete it.
+// ─────────────────────────────────────────────
+let sessionId = sessionStorage.getItem("cwSessionId");
+if (!sessionId) {
+  sessionId = "s_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  sessionStorage.setItem("cwSessionId", sessionId);
+}
+
+// ─────────────────────────────────────────────
 // 🗺️ MAP
+// ─────────────────────────────────────────────
 const map = L.map('map').setView([-26.2041, 28.0473], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-// 🎯 CUSTOM ICONS
+// ─────────────────────────────────────────────
+// 🎯 EMOJI ICONS — built as inline SVG so they
+//    always match the correct issue type, no
+//    external CDN mismatches possible.
+// ─────────────────────────────────────────────
+function makeEmojiIcon(emoji) {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 52' width='44' height='52'>
+    <ellipse cx='22' cy='48' rx='8' ry='3' fill='rgba(0,0,0,0.18)'/>
+    <path d='M22 2 C11 2 4 10 4 19 C4 31 22 46 22 46 C22 46 40 31 40 19 C40 10 33 2 22 2 Z'
+          fill='white' stroke='#333' stroke-width='1.5'/>
+    <text x='22' y='26' font-size='18' text-anchor='middle' dominant-baseline='middle'>${emoji}</text>
+  </svg>`;
+  return L.divIcon({
+    html: svg,
+    className: "",
+    iconSize: [44, 52],
+    iconAnchor: [22, 50],
+    popupAnchor: [0, -52]
+  });
+}
+
+// FIX #3: Each type gets its own matching emoji icon
 const icons = {
-  "Pothole": L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565547.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
-  "Trash":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/484/484662.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
-  "Leak":    L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/414/414974.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
-  "Light":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565654.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
-  "Other":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565491.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] })
+  "Pothole": makeEmojiIcon("🕳️"),
+  "Trash":   makeEmojiIcon("🗑️"),
+  "Leak":    makeEmojiIcon("💧"),
+  "Light":   makeEmojiIcon("💡"),
+  "Other":   makeEmojiIcon("⚠️")
 };
 
+// ─────────────────────────────────────────────
 // 🖼️ PHOTO VIEWER
+// ─────────────────────────────────────────────
 const photoViewer = document.getElementById("photoViewer");
 const viewerImg   = document.getElementById("viewerImg");
 
@@ -340,45 +462,80 @@ photoViewer.addEventListener("click", (e) => {
     viewerImg.src = "";
   }
 });
-
-// expose so popup onclick can call it
 window.openPhotoViewer = openPhotoViewer;
 
+// ─────────────────────────────────────────────
+// 🗑️ DELETE REPORT  (owner only, by sessionId)
+// ─────────────────────────────────────────────
+window.deleteReport = async (docId) => {
+  if (!confirm("Delete this report? This cannot be undone.")) return;
+  try {
+    await deleteDoc(doc(db, "reports", docId));
+  } catch (err) {
+    alert("Could not delete: " + err.message);
+  }
+};
+
+// ─────────────────────────────────────────────
 // 📡 REAL-TIME REPORTS
+// ─────────────────────────────────────────────
+const markerMap = {}; // docId -> L.Marker
+
 onSnapshot(reportsRef, (snapshot) => {
-  map.eachLayer(layer => {
-    if (layer instanceof L.Marker && !layer.options.isUser) map.removeLayer(layer);
-  });
+  // Track which doc IDs exist now
+  const activeIds = new Set();
 
-  snapshot.forEach(doc => {
-    const r = doc.data();
+  snapshot.forEach(docSnap => {
+    const r = docSnap.data();
+    const id = docSnap.id;
+    activeIds.add(id);
 
-    let popupHtml = `<b>${r.type}</b><br>${r.description}`;
+    // If marker already exists, skip re-creating it
+    if (markerMap[id]) return;
 
-    if (r.photoUrl) {
-      // escape for inline attribute safety (base64 is safe, but be explicit)
-      const safeSrc = r.photoUrl.startsWith("data:image") ? r.photoUrl : "";
-      if (safeSrc) {
-        popupHtml += `
-          <img class="popup-thumb" src="${safeSrc}"
-               onclick="openPhotoViewer(this.src)"
-               title="Tap to view full photo"/>
-          <a class="popup-photo-btn" onclick="openPhotoViewer('${safeSrc}')">🖼️ Open Photo</a>`;
-      }
+    const icon = icons[r.type] || icons["Other"];
+    const isOwner = r.sessionId === sessionId;
+
+    let popupHtml = `<b>${r.type}</b><br><span style="font-size:13px">${r.description}</span>`;
+
+    if (r.photoUrl && r.photoUrl.startsWith("data:image")) {
+      popupHtml += `
+        <img class="popup-thumb" src="${r.photoUrl}"
+             onclick="openPhotoViewer(this.src)"
+             title="Tap to view full photo"/>
+        <a class="popup-photo-btn" onclick="openPhotoViewer('${r.photoUrl}')">🖼️ View Photo</a>`;
     }
 
-    L.marker([r.lat, r.lng], { icon: icons[r.type] || icons["Other"] })
+    if (isOwner) {
+      popupHtml += `<br><button class="popup-delete-btn" onclick="deleteReport('${id}')">🗑️ Delete My Report</button>`;
+    }
+
+    const marker = L.marker([r.lat, r.lng], { icon })
       .addTo(map)
       .bindPopup(popupHtml, { maxWidth: 220 });
+
+    markerMap[id] = marker;
   });
+
+  // Remove markers for deleted docs
+  for (const id of Object.keys(markerMap)) {
+    if (!activeIds.has(id)) {
+      map.removeLayer(markerMap[id]);
+      delete markerMap[id];
+    }
+  }
 });
 
+// ─────────────────────────────────────────────
 // 📍 USER TRACKING
+// ─────────────────────────────────────────────
 let userMarker = null;
 let heading = 0;
-const arrowIcon = L.icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-  iconSize: [40,40], iconAnchor:[20,20]
+const arrowIcon = L.divIcon({
+  html: `<div style="font-size:32px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))">📍</div>`,
+  className: "",
+  iconSize: [32, 32],
+  iconAnchor: [16, 32]
 });
 
 function startTracking() {
@@ -390,7 +547,7 @@ function startTracking() {
     pos => {
       const { latitude: lat, longitude: lng } = pos.coords;
       if (!userMarker) {
-        userMarker = L.marker([lat, lng], { icon: arrowIcon, rotationAngle: heading, isUser: true }).addTo(map);
+        userMarker = L.marker([lat, lng], { icon: arrowIcon, isUser: true }).addTo(map);
       } else {
         userMarker.setLatLng([lat, lng]);
       }
@@ -401,16 +558,11 @@ function startTracking() {
   );
 }
 
-window.addEventListener("deviceorientationabsolute", (event) => {
-  if (event.alpha !== null && userMarker) {
-    heading = event.alpha;
-    userMarker.setRotationAngle(heading);
-  }
-});
-
 document.getElementById("locateBtn").onclick = startTracking;
 
+// ─────────────────────────────────────────────
 // 🍔 MENU
+// ─────────────────────────────────────────────
 const menu = document.getElementById("menu");
 const menuOverlay = document.getElementById("menuOverlay");
 document.getElementById("menuBtn").onclick = () => {
@@ -422,7 +574,25 @@ menuOverlay.onclick = () => {
   menuOverlay.classList.remove("show");
 };
 
+// ─────────────────────────────────────────────
+// 🛠️ DEV: CLEAR ALL REPORTS
+// ─────────────────────────────────────────────
+document.getElementById("devClearBtn").onclick = async () => {
+  if (!confirm("⚠️ DEV ONLY: Delete ALL reports from the database?\n\nThis cannot be undone.")) return;
+  try {
+    const snapshot = await getDocs(reportsRef);
+    const deletes = snapshot.docs.map(d => deleteDoc(doc(db, "reports", d.id)));
+    await Promise.all(deletes);
+    alert(`✅ Cleared ${snapshot.docs.length} report(s).`);
+  } catch (err) {
+    alert("Error clearing: " + err.message);
+  }
+};
+
+// ─────────────────────────────────────────────
 // 📷 PHOTO LOGIC
+// FIX #2: Compress more aggressively + size guard
+// ─────────────────────────────────────────────
 let photoBase64 = null;
 const photoInput   = document.getElementById("photoInput");
 const photoPreview = document.getElementById("photoPreview");
@@ -435,15 +605,23 @@ photoInput.onchange = () => {
   reader.onload = (e) => {
     const img = new Image();
     img.onload = () => {
-      // Resize to max 800px wide/tall, compress to ~75% JPEG
-      const MAX = 800;
+      // Max 600px and 60% quality to stay well under Firestore's 1MB doc limit
+      const MAX = 600;
       let w = img.width, h = img.height;
       if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
       else if (h > MAX)     { w = Math.round(w * MAX / h); h = MAX; }
       const canvas = document.createElement("canvas");
       canvas.width = w; canvas.height = h;
       canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      photoBase64 = canvas.toDataURL("image/jpeg", 0.75);
+      const data = canvas.toDataURL("image/jpeg", 0.60);
+
+      // Guard: Firestore doc max is ~1MB; base64 of image should be under 700KB
+      if (data.length > 700000) {
+        alert("Photo is too large even after compression. Please use a smaller image.");
+        return;
+      }
+
+      photoBase64 = data;
       previewImg.src = photoBase64;
       photoPreview.style.display = "block";
     };
@@ -459,7 +637,10 @@ document.getElementById("removePhoto").onclick = () => {
   photoPreview.style.display = "none";
 };
 
+// ─────────────────────────────────────────────
 // 📌 REPORT SYSTEM
+// FIX #1: try/catch so submit never gets stuck
+// ─────────────────────────────────────────────
 let pendingLocation = null;
 let selectedType = "Other";
 
@@ -477,7 +658,6 @@ map.on("click", e => {
   document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("selected"));
   selectedType = "Other";
   document.getElementById("desc").value = "";
-  // reset photo
   photoBase64 = null;
   photoInput.value = "";
   previewImg.src = "";
@@ -495,23 +675,32 @@ document.getElementById("submitBtn").onclick = async () => {
     alert("Please describe the issue.");
     return;
   }
+
   const btn = document.getElementById("submitBtn");
   btn.textContent = "Submitting...";
   btn.disabled = true;
 
-  await addDoc(reportsRef, {
-    type: selectedType,
-    description: desc,
-    lat: pendingLocation.lat,
-    lng: pendingLocation.lng,
-    photoUrl: photoBase64 || null,
-    timestamp: new Date().toISOString()
-  });
+  // FIX #1: wrap in try/catch so the button always resets
+  try {
+    await addDoc(reportsRef, {
+      type: selectedType,
+      description: desc,
+      lat: pendingLocation.lat,
+      lng: pendingLocation.lng,
+      photoUrl: photoBase64 || null,
+      sessionId: sessionId,           // used to identify owner for delete
+      timestamp: new Date().toISOString()
+    });
 
-  btn.textContent = "Submit Report";
-  btn.disabled = false;
-  document.getElementById("panel").classList.remove("active");
-  pendingLocation = null;
+    document.getElementById("panel").classList.remove("active");
+    pendingLocation = null;
+  } catch (err) {
+    alert("Failed to submit: " + err.message + "\n\nCheck your Firebase config.");
+  } finally {
+    // Always re-enable the button whether success or failure
+    btn.textContent = "Submit Report";
+    btn.disabled = false;
+  }
 };
 </script>
 </body>
