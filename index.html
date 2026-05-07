@@ -1,689 +1,518 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>CityWatch Map</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-<style>
+  <title>Community Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>
+    body { margin:0; font-family:sans-serif; }
+    #map { height:100vh; }
 
-* { box-sizing: border-box; }
+    /* ── ISSUE PANEL ── */
+    .issue-panel {
+      position: fixed;
+      bottom:0; left:0; right:0;
+      background:white;
+      padding:15px;
+      transform: translateY(100%);
+      transition:0.3s;
+      z-index:1000;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+    }
+    .issue-panel.active { transform: translateY(0); }
+    .issue-panel h3 { margin: 0 0 12px; font-size: 15px; color: #333; }
 
-body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  overflow: hidden;
-}
+    .type-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .type-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 4px;
+      border: 2px solid #e0e0e0;
+      border-radius: 10px;
+      background: white;
+      cursor: pointer;
+      font-size: 11px;
+      color: #555;
+      transition: 0.15s;
+    }
+    .type-btn span.icon { font-size: 22px; }
+    .type-btn:hover { border-color: #007bff; color: #007bff; }
+    .type-btn.selected { border-color: #007bff; background: #e8f0fe; color: #007bff; font-weight: 600; }
 
-#map {
-  height: 100vh;
-  width: 100vw;
-}
+    .issue-panel input[type="text"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
 
-/* =========================
-   ISSUE PANEL
-========================= */
+    /* ── PHOTO UPLOAD ── */
+    .photo-area { margin-bottom: 10px; }
+    .photo-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border: 2px dashed #ccc;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #666;
+      transition: 0.15s;
+    }
+    .photo-label:hover { border-color: #007bff; color: #007bff; }
+    .photo-label span.cam { font-size: 20px; }
+    #photoInput { display: none; }
 
-.issue-panel {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: white;
-  padding: 20px 16px 30px;
-  transform: translateY(100%);
-  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
-  z-index: 1000;
-  border-radius: 20px 20px 0 0;
-  box-shadow: 0 -6px 30px rgba(0,0,0,0.18);
-  max-height: 85vh;
-  overflow-y: auto;
-}
+    #photoPreview {
+      display: none;
+      position: relative;
+      margin-top: 8px;
+    }
+    #photoPreview img {
+      width: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid #eee;
+    }
+    #removePhoto {
+      position: absolute;
+      top: 6px; right: 6px;
+      background: rgba(0,0,0,0.55);
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 26px; height: 26px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
 
-.issue-panel.active {
-  transform: translateY(0);
-}
+    .panel-actions { display: flex; gap: 8px; }
+    .panel-actions button {
+      flex: 1;
+      padding: 11px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    #submitBtn { background: #007bff; color: white; font-weight: 600; }
+    #cancelBtn { background: #f0f0f0; color: #555; }
 
-.panel-handle {
-  width: 40px;
-  height: 4px;
-  background: #ddd;
-  border-radius: 2px;
-  margin: 0 auto 16px;
-}
+    /* ── LOCATE BUTTON ── */
+    .locate-btn {
+      position: fixed;
+      top: 15px; left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      background: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 20px;
+      font-size: 14px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
 
-.panel-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #111;
-  margin: 0 0 14px;
-}
+    /* ── MENU BUTTON ── */
+    .menu-btn {
+      position: fixed;
+      top: 15px; left: 15px;
+      z-index: 1001;
+      background: white;
+      border: none;
+      font-size: 22px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      line-height: 1;
+    }
 
-/* Type grid */
-.type-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin-bottom: 14px;
-}
+    /* ── SIDE MENU ── */
+    .menu {
+      position: fixed;
+      top: 0; left: -260px;
+      width: 250px; height: 100%;
+      background: white;
+      box-shadow: 2px 0 16px rgba(0,0,0,0.18);
+      transition: 0.3s ease;
+      z-index: 1002;
+      padding: 28px 20px 20px;
+      box-sizing: border-box;
+    }
+    .menu.open { left: 0; }
+    .menu h3 { margin: 0 0 4px; font-size: 18px; color: #007bff; }
+    .menu p.subtitle { margin: 0 0 16px; font-size: 13px; color: #888; }
+    .menu hr { border: none; border-top: 1px solid #eee; margin: 16px 0; }
+    .menu-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 8px; border-radius: 8px;
+      font-size: 14px; color: #444; cursor: pointer;
+    }
+    .menu-item:hover { background: #f5f5f5; }
+    .menu-item span.mi { font-size: 18px; }
+    .coming-soon { font-size: 12px; color: #aaa; padding: 6px 8px; }
+    .menu-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      z-index: 1001; background: transparent;
+    }
+    .menu-overlay.show { display: block; }
 
-.type-btn {
-  padding: 10px 4px;
-  border: 2px solid #e5e5e5;
-  border-radius: 12px;
-  background: white;
-  cursor: pointer;
-  font-size: 22px;
-  text-align: center;
-  transition: border-color 0.15s, background 0.15s;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  line-height: 1;
-}
+    /* ── FULL-SCREEN PHOTO VIEWER ── */
+    .photo-viewer {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.92);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+    .photo-viewer.open { display: flex; }
+    .photo-viewer img {
+      max-width: 95vw;
+      max-height: 85vh;
+      border-radius: 10px;
+      object-fit: contain;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.5);
+    }
+    .photo-viewer-close {
+      position: absolute;
+      top: 18px; right: 18px;
+      background: rgba(255,255,255,0.15);
+      border: none; color: white;
+      font-size: 24px;
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .photo-viewer-close:hover { background: rgba(255,255,255,0.28); }
 
-.type-btn span.label {
-  font-size: 9px;
-  color: #555;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.type-btn.selected {
-  border-color: #2563eb;
-  background: #eff6ff;
-}
-
-.type-btn.selected span.label {
-  color: #2563eb;
-}
-
-/* Description input */
-#desc {
-  width: 100%;
-  padding: 12px 14px;
-  border: 2px solid #e5e5e5;
-  border-radius: 12px;
-  font-size: 14px;
-  outline: none;
-  resize: none;
-  font-family: inherit;
-  margin-bottom: 12px;
-  transition: border-color 0.15s;
-}
-
-#desc:focus {
-  border-color: #2563eb;
-}
-
-/* =========================
-   PHOTO UPLOAD
-========================= */
-
-.photo-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border: 2px dashed #ddd;
-  border-radius: 12px;
-  cursor: pointer;
-  margin-bottom: 12px;
-  color: #555;
-  font-size: 13px;
-  font-weight: 500;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.photo-label:hover {
-  border-color: #2563eb;
-  background: #f8faff;
-}
-
-.photo-label svg {
-  flex-shrink: 0;
-}
-
-#photoInput {
-  display: none;
-}
-
-.photo-preview-wrap {
-  position: relative;
-  display: inline-block;
-  margin-bottom: 12px;
-}
-
-#photoPreview {
-  display: none;
-  width: 100%;
-  max-height: 160px;
-  object-fit: cover;
-  border-radius: 12px;
-  border: 2px solid #e5e5e5;
-}
-
-#removePhoto {
-  display: none;
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  background: rgba(0,0,0,0.55);
-  border: none;
-  color: white;
-  border-radius: 50%;
-  width: 26px;
-  height: 26px;
-  font-size: 14px;
-  cursor: pointer;
-  line-height: 1;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Submit */
-#submitBtn {
-  width: 100%;
-  padding: 14px;
-  background: #2563eb;
-  color: white;
-  border: none;
-  border-radius: 14px;
-  font-size: 15px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-}
-
-#submitBtn:active {
-  transform: scale(0.98);
-  background: #1d4ed8;
-}
-
-#submitBtn:disabled {
-  background: #93c5fd;
-  cursor: not-allowed;
-}
-
-.close-panel {
-  position: absolute;
-  top: 20px;
-  right: 16px;
-  background: #f3f4f6;
-  border: none;
-  border-radius: 50%;
-  width: 30px;
-  height: 30px;
-  font-size: 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #555;
-}
-
-/* =========================
-   EMOJI MARKERS
-========================= */
-
-.emoji-marker { background: transparent; border: none; }
-
-.emoji-pin {
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  background: white;
-  border-radius: 50%;
-  border: 2.5px solid white;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.22);
-}
-
-/* =========================
-   USER MARKER
-========================= */
-
-.user-marker { background: transparent; border: none; }
-
-.user-wrapper {
-  position: relative;
-  width: 44px;
-  height: 44px;
-}
-
-.user-dot {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  background: #1e88ff;
-  border-radius: 50%;
-  left: 14px;
-  top: 14px;
-  border: 3px solid white;
-  z-index: 2;
-}
-
-.user-pulse {
-  position: absolute;
-  width: 16px;
-  height: 16px;
-  left: 14px;
-  top: 14px;
-  background: rgba(30,136,255,0.35);
-  border-radius: 50%;
-  animation: pulse 2s infinite;
-  z-index: 1;
-}
-
-/* Arrow points UP by default; we rotate via JS */
-.user-arrow {
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-left: 9px solid transparent;
-  border-right: 9px solid transparent;
-  border-bottom: 20px solid #1e88ff;
-  top: -4px;
-  left: 13px;
-  /* transform-origin must be at the center of the dot */
-  transform-origin: 9px 26px;
-  z-index: 3;
-}
-
-@keyframes pulse {
-  0%   { transform: scale(1);  opacity: 0.5; }
-  70%  { transform: scale(3.2); opacity: 0;   }
-  100% { opacity: 0; }
-}
-
-/* Toast */
-.toast {
-  position: fixed;
-  bottom: 90px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  background: #111;
-  color: white;
-  padding: 10px 20px;
-  border-radius: 999px;
-  font-size: 13px;
-  font-weight: 600;
-  opacity: 0;
-  transition: opacity 0.3s, transform 0.3s;
-  z-index: 2000;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-</style>
+    /* popup photo styles */
+    .popup-thumb {
+      width: 100%;
+      max-height: 90px;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-top: 6px;
+      cursor: pointer;
+      display: block;
+    }
+    .popup-photo-btn {
+      display: inline-block;
+      margin-top: 5px;
+      padding: 5px 10px;
+      background: #007bff;
+      color: white !important;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+  </style>
 </head>
 <body>
 
 <div id="map"></div>
+<button class="locate-btn" id="locateBtn">📍 Find My Location</button>
+<button class="menu-btn" id="menuBtn">☰</button>
+<div class="menu-overlay" id="menuOverlay"></div>
 
-<!-- Toast notification -->
-<div class="toast" id="toast"></div>
+<!-- Side menu -->
+<div class="menu" id="menu">
+  <h3>🗺️ CityWatch</h3>
+  <p class="subtitle">Community Issue Map</p>
+  <hr>
+  <div class="menu-item"><span class="mi">📍</span> Report an Issue</div>
+  <div class="menu-item"><span class="mi">📊</span> Stats <span style="margin-left:auto;font-size:11px;color:#aaa;">soon</span></div>
+  <div class="menu-item"><span class="mi">🎛️</span> Filter by Type <span style="margin-left:auto;font-size:11px;color:#aaa;">soon</span></div>
+  <div class="menu-item"><span class="mi">✅</span> Mark Resolved <span style="margin-left:auto;font-size:11px;color:#aaa;">soon</span></div>
+  <hr>
+  <div class="coming-soon">More features coming soon...</div>
+</div>
 
-<!-- Report panel -->
+<!-- Issue report panel -->
 <div class="issue-panel" id="panel">
-  <div class="panel-handle"></div>
-  <button class="close-panel" id="closePanel">✕</button>
-  <p class="panel-title">Report an Issue</p>
-
+  <h3>📌 Report an Issue</h3>
   <div class="type-grid">
-    <div class="type-btn selected" data-type="Pothole">🕳️<span class="label">Pothole</span></div>
-    <div class="type-btn" data-type="Trash">🗑️<span class="label">Trash</span></div>
-    <div class="type-btn" data-type="Leak">💧<span class="label">Leak</span></div>
-    <div class="type-btn" data-type="Light">💡<span class="label">Light</span></div>
-    <div class="type-btn" data-type="Other">⚠️<span class="label">Other</span></div>
+    <button class="type-btn" data-type="Pothole"><span class="icon">🕳️</span> Pothole</button>
+    <button class="type-btn" data-type="Trash"><span class="icon">🗑️</span> Trash</button>
+    <button class="type-btn" data-type="Leak"><span class="icon">💧</span> Leak</button>
+    <button class="type-btn" data-type="Light"><span class="icon">💡</span> Light</button>
+    <button class="type-btn" data-type="Other"><span class="icon">⚠️</span> Other</button>
   </div>
 
-  <textarea id="desc" rows="3" placeholder="Describe the issue (optional)..."></textarea>
+  <input type="text" id="desc" placeholder="Describe the issue..."/>
 
-  <!-- Photo Upload -->
-  <label class="photo-label" for="photoInput">
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="3"/>
-      <circle cx="8.5" cy="8.5" r="1.5"/>
-      <polyline points="21 15 16 10 5 21"/>
-    </svg>
-    <span id="photoLabelText">Add a photo</span>
-  </label>
-  <input type="file" id="photoInput" accept="image/*" capture="environment"/>
-
-  <div class="photo-preview-wrap" style="width:100%">
-    <img id="photoPreview" alt="Preview"/>
-    <button id="removePhoto">✕</button>
+  <div class="photo-area">
+    <label class="photo-label" for="photoInput">
+      <span class="cam">📷</span> Take / Upload a Photo
+      <span style="margin-left:auto;font-size:11px;color:#aaa;">optional</span>
+    </label>
+    <input type="file" id="photoInput" accept="image/*" capture="environment"/>
+    <div id="photoPreview">
+      <img id="previewImg" src="" alt="preview"/>
+      <button id="removePhoto" title="Remove">✕</button>
+    </div>
   </div>
 
-  <button id="submitBtn">Submit Report</button>
+  <div class="panel-actions">
+    <button id="cancelBtn">Cancel</button>
+    <button id="submitBtn">Submit Report</button>
+  </div>
+</div>
+
+<!-- Full-screen photo viewer -->
+<div class="photo-viewer" id="photoViewer">
+  <button class="photo-viewer-close" id="closeViewer">✕</button>
+  <img id="viewerImg" src="" alt="Issue photo"/>
 </div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
+<script src="https://unpkg.com/leaflet-rotatedmarker/leaflet.rotatedMarker.js"></script>
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
 
-import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.4/firebase-app.js";
-import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.4/firebase-firestore.js";
-
-/* ── Firebase config ── */
+// 🔥 Firebase config — paste your values here
 const firebaseConfig = {
-  apiKey: "AIzaSyBT8j239aELPwxD0iQcQj6fdnhQVHNuMLU",
-  authDomain: "community-map-125ba.firebaseapp.com",
-  projectId: "community-map-125ba",
-  storageBucket: "community-map-125ba.firebasestorage.app",
-  messagingSenderId:"1016337399487",
-  appId: "1:1016337399487:web:77ba8a7b8c89fd850fd00a",
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  appId: ""
 };
 
-const app        = initializeApp(firebaseConfig);
-const db         = getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 const reportsRef = collection(db, "reports");
 
-/* ── Map ── */
-const map = L.map("map", { zoomControl: false }).setView([-26.2, 28.0], 14);
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "© OpenStreetMap contributors"
+// 🗺️ MAP
+const map = L.map('map').setView([-26.2041, 28.0473], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap'
 }).addTo(map);
 
-/* ── Emoji icons ── */
-function makeIcon(emoji) {
-  return L.divIcon({
-    className: "emoji-marker",
-    html: `<div class="emoji-pin">${emoji}</div>`,
-    iconSize: [44, 44],
-    iconAnchor: [22, 44]
-  });
-}
-
+// 🎯 CUSTOM ICONS
 const icons = {
-  Pothole: makeIcon("🕳️"),
-  Trash:   makeIcon("🗑️"),
-  Leak:    makeIcon("💧"),
-  Light:   makeIcon("💡"),
-  Other:   makeIcon("⚠️")
+  "Pothole": L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565547.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
+  "Trash":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/484/484662.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
+  "Leak":    L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/414/414974.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
+  "Light":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565654.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] }),
+  "Other":   L.icon({ iconUrl:"https://cdn-icons-png.flaticon.com/512/565/565491.png", iconSize:[35,35], iconAnchor:[17,35], popupAnchor:[0,-35] })
 };
 
-/* ── User marker ── */
-let userMarker    = null;
-let accuracyCircle = null;
-let follow        = true;
-let watchId       = null;
+// 🖼️ PHOTO VIEWER
+const photoViewer = document.getElementById("photoViewer");
+const viewerImg   = document.getElementById("viewerImg");
 
-const userIcon = L.divIcon({
-  className: "user-marker",
-  html: `
-    <div class="user-wrapper">
-      <div class="user-pulse"></div>
-      <div class="user-arrow" id="arrowEl"></div>
-      <div class="user-dot"></div>
-    </div>`,
-  iconSize: [44, 44],
-  iconAnchor: [22, 22]
+function openPhotoViewer(src) {
+  viewerImg.src = src;
+  photoViewer.classList.add("open");
+}
+document.getElementById("closeViewer").onclick = () => {
+  photoViewer.classList.remove("open");
+  viewerImg.src = "";
+};
+photoViewer.addEventListener("click", (e) => {
+  if (e.target === photoViewer) {
+    photoViewer.classList.remove("open");
+    viewerImg.src = "";
+  }
 });
 
-/* Smoothly animate the marker position */
-function moveSmooth(marker, latlng) {
-  const start     = marker.getLatLng();
-  const startTime = performance.now();
-  const DURATION  = 600; // ms
+// expose so popup onclick can call it
+window.openPhotoViewer = openPhotoViewer;
 
-  function step(now) {
-    const p   = Math.min((now - startTime) / DURATION, 1);
-    const lat = start.lat + (latlng.lat - start.lat) * p;
-    const lng = start.lng + (latlng.lng - start.lng) * p;
-    marker.setLatLng([lat, lng]);
-    if (p < 1) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-}
+// 📡 REAL-TIME REPORTS
+onSnapshot(reportsRef, (snapshot) => {
+  map.eachLayer(layer => {
+    if (layer instanceof L.Marker && !layer.options.isUser) map.removeLayer(layer);
+  });
 
-/* Rotate the arrow inside the marker's DOM element */
-function setArrowHeading(degrees) {
-  if (!userMarker) return;
-  const el = userMarker.getElement();
-  if (!el) return;
-  const arrow = el.querySelector(".user-arrow");
-  if (arrow) arrow.style.transform = `rotate(${degrees}deg)`;
-}
+  snapshot.forEach(doc => {
+    const r = doc.data();
 
-/* ── DeviceOrientation for compass heading ── */
-let compassHeading = null;
+    let popupHtml = `<b>${r.type}</b><br>${r.description}`;
 
-function requestOrientationPermission() {
+    if (r.photoUrl) {
+      // escape for inline attribute safety (base64 is safe, but be explicit)
+      const safeSrc = r.photoUrl.startsWith("data:image") ? r.photoUrl : "";
+      if (safeSrc) {
+        popupHtml += `
+          <img class="popup-thumb" src="${safeSrc}"
+               onclick="openPhotoViewer(this.src)"
+               title="Tap to view full photo"/>
+          <a class="popup-photo-btn" onclick="openPhotoViewer('${safeSrc}')">🖼️ Open Photo</a>`;
+      }
+    }
+
+    L.marker([r.lat, r.lng], { icon: icons[r.type] || icons["Other"] })
+      .addTo(map)
+      .bindPopup(popupHtml, { maxWidth: 220 });
+  });
+});
+
+// 📍 USER TRACKING
+let userMarker = null;
+let heading = 0;
+const arrowIcon = L.icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+  iconSize: [40,40], iconAnchor:[20,20]
+});
+
+function startTracking() {
   if (typeof DeviceOrientationEvent !== "undefined" &&
       typeof DeviceOrientationEvent.requestPermission === "function") {
-    // iOS 13+
-    DeviceOrientationEvent.requestPermission()
-      .then(state => { if (state === "granted") listenOrientation(); })
-      .catch(console.warn);
-  } else {
-    listenOrientation();
+    DeviceOrientationEvent.requestPermission();
   }
-}
-
-function listenOrientation() {
-  window.addEventListener("deviceorientationabsolute", onOrientation, true);
-  window.addEventListener("deviceorientation",         onOrientation, true);
-}
-
-function onOrientation(e) {
-  let heading = null;
-
-  if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
-    // Safari / iOS
-    heading = e.webkitCompassHeading;
-  } else if (e.absolute && e.alpha !== null) {
-    // Android absolute
-    heading = 360 - e.alpha;
-  } else if (e.alpha !== null) {
-    // Fallback non-absolute
-    heading = 360 - e.alpha;
-  }
-
-  if (heading !== null) {
-    compassHeading = heading;
-    setArrowHeading(heading);
-  }
-}
-
-requestOrientationPermission();
-
-/* ── Geolocation ── */
-function startTracking() {
-  if (!navigator.geolocation) {
-    showToast("Geolocation not supported");
-    return;
-  }
-
-  watchId = navigator.geolocation.watchPosition(
+  navigator.geolocation.watchPosition(
     pos => {
-      const { latitude, longitude, accuracy, heading } = pos.coords;
-      const latlng = L.latLng(latitude, longitude);
-
+      const { latitude: lat, longitude: lng } = pos.coords;
       if (!userMarker) {
-        userMarker = L.marker(latlng, { icon: userIcon, zIndexOffset: 1000 }).addTo(map);
-        accuracyCircle = L.circle(latlng, {
-          radius:      accuracy,
-          color:       "#1e88ff",
-          fillOpacity: 0.08,
-          weight:      1
-        }).addTo(map);
+        userMarker = L.marker([lat, lng], { icon: arrowIcon, rotationAngle: heading, isUser: true }).addTo(map);
       } else {
-        moveSmooth(userMarker, latlng);
-        accuracyCircle.setLatLng(latlng);
-        accuracyCircle.setRadius(accuracy);
+        userMarker.setLatLng([lat, lng]);
       }
-
-      // Use GPS heading only when moving AND compass heading not available
-      if (heading !== null && !isNaN(heading) && compassHeading === null) {
-        setArrowHeading(heading);
-      }
-
-      if (follow) {
-        map.setView(latlng, map.getZoom(), { animate: true });
-      }
+      map.setView([lat, lng], 17);
     },
-    err => {
-      console.warn("Geolocation error:", err);
-      showToast("Location unavailable: " + err.message);
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge:         0,       // always get fresh position
-      timeout:            10000
-    }
+    err => alert(err.message),
+    { enableHighAccuracy: true, maximumAge: 0 }
   );
 }
 
-startTracking();
-
-map.on("dragstart", () => { follow = false; });
-
-/* Re-centre button */
-const recenterBtn = L.control({ position: "bottomright" });
-recenterBtn.onAdd = () => {
-  const btn = L.DomUtil.create("button");
-  btn.innerHTML = "📍";
-  btn.title     = "Re-center";
-  btn.style.cssText = `
-    width:44px;height:44px;border-radius:50%;border:none;
-    background:white;font-size:20px;cursor:pointer;
-    box-shadow:0 2px 10px rgba(0,0,0,0.2);margin-bottom:80px;`;
-  L.DomEvent.on(btn, "click", () => {
-    follow = true;
-    if (userMarker) map.setView(userMarker.getLatLng(), 16, { animate: true });
-  });
-  return btn;
-};
-recenterBtn.addTo(map);
-
-/* ── Panel state ── */
-let selected = "Pothole";
-let point    = null;
-let photoFile = null;
-
-map.on("click", e => {
-  point = e.latlng;
-  document.getElementById("panel").classList.add("active");
+window.addEventListener("deviceorientationabsolute", (event) => {
+  if (event.alpha !== null && userMarker) {
+    heading = event.alpha;
+    userMarker.setRotationAngle(heading);
+  }
 });
 
-document.getElementById("closePanel").onclick = () => {
-  document.getElementById("panel").classList.remove("active");
+document.getElementById("locateBtn").onclick = startTracking;
+
+// 🍔 MENU
+const menu = document.getElementById("menu");
+const menuOverlay = document.getElementById("menuOverlay");
+document.getElementById("menuBtn").onclick = () => {
+  menu.classList.toggle("open");
+  menuOverlay.classList.toggle("show");
 };
+menuOverlay.onclick = () => {
+  menu.classList.remove("open");
+  menuOverlay.classList.remove("show");
+};
+
+// 📷 PHOTO LOGIC
+let photoBase64 = null;
+const photoInput   = document.getElementById("photoInput");
+const photoPreview = document.getElementById("photoPreview");
+const previewImg   = document.getElementById("previewImg");
+
+photoInput.onchange = () => {
+  const file = photoInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      // Resize to max 800px wide/tall, compress to ~75% JPEG
+      const MAX = 800;
+      let w = img.width, h = img.height;
+      if (w > h && w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      else if (h > MAX)     { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      photoBase64 = canvas.toDataURL("image/jpeg", 0.75);
+      previewImg.src = photoBase64;
+      photoPreview.style.display = "block";
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+};
+
+document.getElementById("removePhoto").onclick = () => {
+  photoBase64 = null;
+  photoInput.value = "";
+  previewImg.src = "";
+  photoPreview.style.display = "none";
+};
+
+// 📌 REPORT SYSTEM
+let pendingLocation = null;
+let selectedType = "Other";
 
 document.querySelectorAll(".type-btn").forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("selected"));
     btn.classList.add("selected");
-    selected = btn.dataset.type;
+    selectedType = btn.dataset.type;
   };
 });
 
-/* ── Photo handling ── */
-const photoInput   = document.getElementById("photoInput");
-const photoPreview = document.getElementById("photoPreview");
-const removePhoto  = document.getElementById("removePhoto");
-const photoLabel   = document.getElementById("photoLabelText");
-
-photoInput.addEventListener("change", () => {
-  const file = photoInput.files[0];
-  if (!file) return;
-  photoFile = file;
-  const url = URL.createObjectURL(file);
-  photoPreview.src            = url;
-  photoPreview.style.display  = "block";
-  removePhoto.style.display   = "flex";
-  photoLabel.textContent      = "Change photo";
+map.on("click", e => {
+  pendingLocation = e.latlng;
+  document.getElementById("panel").classList.add("active");
+  document.querySelectorAll(".type-btn").forEach(b => b.classList.remove("selected"));
+  selectedType = "Other";
+  document.getElementById("desc").value = "";
+  // reset photo
+  photoBase64 = null;
+  photoInput.value = "";
+  previewImg.src = "";
+  photoPreview.style.display = "none";
 });
 
-removePhoto.addEventListener("click", () => {
-  photoFile                   = null;
-  photoPreview.src            = "";
-  photoPreview.style.display  = "none";
-  removePhoto.style.display   = "none";
-  photoLabel.textContent      = "Add a photo";
-  photoInput.value            = "";
-});
-
-/* ── Submit ── */
-document.getElementById("submitBtn").onclick = async () => {
-  if (!point) return;
-
-  const btn = document.getElementById("submitBtn");
-  btn.disabled = true;
-  btn.textContent = "Submitting…";
-
-  try {
-    const desc = document.getElementById("desc").value.trim();
-
-    // If you want to upload photo to Firebase Storage, do it here and store the URL.
-    // For now we store metadata only (photo upload requires Storage setup).
-    const payload = {
-      type:        selected,
-      description: desc,
-      lat:         point.lat,
-      lng:         point.lng,
-      hasPhoto:    !!photoFile,
-      timestamp:   Date.now()
-    };
-
-    await addDoc(reportsRef, payload);
-
-    // Reset form
-    document.getElementById("desc").value = "";
-    removePhoto.click();
-    document.getElementById("panel").classList.remove("active");
-    showToast("✅ Report submitted!");
-  } catch (err) {
-    console.error(err);
-    showToast("❌ Error submitting report");
-  } finally {
-    btn.disabled    = false;
-    btn.textContent = "Submit Report";
-  }
+document.getElementById("cancelBtn").onclick = () => {
+  document.getElementById("panel").classList.remove("active");
+  pendingLocation = null;
 };
 
-/* ── Live reports listener ── */
-const markerMap = {};
+document.getElementById("submitBtn").onclick = async () => {
+  const desc = document.getElementById("desc").value.trim();
+  if (!desc || !pendingLocation) {
+    alert("Please describe the issue.");
+    return;
+  }
+  const btn = document.getElementById("submitBtn");
+  btn.textContent = "Submitting...";
+  btn.disabled = true;
 
-onSnapshot(reportsRef, snap => {
-  snap.docChanges().forEach(change => {
-    const id = change.doc.id;
-    const d  = change.doc.data();
-
-    if (change.type === "added") {
-      const m = L.marker([d.lat, d.lng], { icon: icons[d.type] || icons.Other })
-        .addTo(map)
-        .bindPopup(`<b>${d.type}</b><br>${d.description || "(no description)"}`);
-      markerMap[id] = m;
-    }
-
-    if (change.type === "removed" && markerMap[id]) {
-      map.removeLayer(markerMap[id]);
-      delete markerMap[id];
-    }
+  await addDoc(reportsRef, {
+    type: selectedType,
+    description: desc,
+    lat: pendingLocation.lat,
+    lng: pendingLocation.lng,
+    photoUrl: photoBase64 || null,
+    timestamp: new Date().toISOString()
   });
-});
 
-/* ── Toast helper ── */
-function showToast(msg, duration = 3000) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.classList.add("show");
-  setTimeout(() => t.classList.remove("show"), duration);
-}
-
+  btn.textContent = "Submit Report";
+  btn.disabled = false;
+  document.getElementById("panel").classList.remove("active");
+  pendingLocation = null;
+};
 </script>
 </body>
 </html>
